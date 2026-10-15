@@ -19,7 +19,7 @@ Por eso, entender por qué se hace algo vale más que terminarlo rápido. Si hay
 
 Un lakehouse medallion sobre los vuelos domésticos de EE. UU. (**BTS On-Time Performance**). Los archivos mensuales entran a S3, dos jobs de Glue los llevan por tres capas (bronze, silver, gold), y el resultado se consulta con Athena, se gobierna con Lake Formation y se ve en un dashboard. Después se le agrega orquestación, calidad de datos y monitoreo.
 
-El detalle completo está en `docs/PLAN.md`: las capas, el dataset con lo que se midió en los archivos reales, el modelo de gold, la estructura del repo y las fases con su checklist de "hecho cuando" y los temas del examen de cada una. El diagrama está en `docs/arquitectura-gratis.svg`.
+El detalle completo está en `docs/PLAN.md`: las capas, el dataset con lo que se midió en los archivos reales, el modelo de gold, la estructura del repo y las fases con su checklist de "hecho cuando" y los temas del examen de cada una. El diagrama está en `docs/arquitectura-gratis.png` (y `.svg`), y las decisiones de diseño con sus números en `docs/DECISIONES.md`.
 
 **Leé `docs/PLAN.md` y mirá el diagrama al empezar cada sesión, antes de proponer cualquier paso.** El plan manda: si querés cambiar algo de lo que dice, proponémelo primero.
 
@@ -73,33 +73,33 @@ Esto corre en mi cuenta personal de AWS. Es una cuenta creada con la "nueva expe
 
 **Credenciales**
 
-- Uso un perfil de la CLI llamado `flights`. La cuenta no tiene root ni IAM Identity Center: cómo se conecta la CLI se define y se verifica en la documentación al arrancar la fase 0. Todos los comandos llevan `--profile flights` o usan `AWS_PROFILE=flights`.
+- Uso un perfil de la CLI llamado `flights`. La cuenta no tiene root ni IAM Identity Center: la CLI se conecta con `aws login --profile flights` (credenciales temporales de la sesión de consola, de hasta 12 horas; si aparece `ExpiredToken`, se renuevan con ese mismo comando). Todos los comandos llevan `--profile flights` o usan `AWS_PROFILE=flights`.
 - Nunca imprimas, pegues en un archivo ni commitees access keys, contraseñas o el contenido de un secreto.
 - El `.gitignore` ya excluye `.env`, `data/`, `.aws-sam/`, `*.pem` y `*.key`. Revisalo en la fase 0.
 
 **Costos**
 
-- Región: la que AWS asignó a mi proyecto (se confirma en la fase 0; probablemente `us-east-2`). No se puede cambiar. Antes de pegar cualquier comando, comprobá que lleva la región correcta.
+- Región: `us-east-2` (la que AWS asignó a mi proyecto, ya confirmada). No se puede cambiar. Antes de pegar cualquier comando, comprobá que lleva la región correcta.
 - **Solo servicios de la lista del plan gratuito.** No se usan Redshift, Kinesis, Firehose, MSK ni EMR. Antes de proponer un servicio nuevo, verificalo contra la [lista oficial](https://docs.aws.amazon.com/accounts/latest/reference/supported-services-sign-up-new.html). Si hace falta uno que no está, me avisás y lo hablamos: pasar al plan de pago es decisión mía.
 - Lo primero que se crea en todo el proyecto es un presupuesto en AWS Budgets de USD 10 con aviso por mail. Verificá cómo se comporta con créditos antes de darlo por bueno.
 - Todos los recursos llevan el tag `Project=flights`.
 - Glue: la lógica se desarrolla y se prueba en local, en un contenedor de Spark, con una muestra chica. En AWS, cada job corre con 2 workers `G.1X` y un timeout corto (15 minutos). Nada de notebooks interactivos ni de dev endpoints.
 - Athena: un workgroup propio con ubicación de resultados y un límite de datos escaneados por consulta.
-- QuickSight y los data events de CloudTrail son opcionales. Avisame el costo antes de activarlos.
+- Quick (dashboards) y los data events de CloudTrail no se usan: Quick solo crea dashboards en su plan Enterprise, que no entra en la cuenta gratuita (el dashboard es un HTML local), y los data events cobran. Si hiciera falta activar alguno, avisame el costo antes.
 - Los stacks están separados por cuánto viven:
 
 | Stack | Qué tiene | Vida |
 |---|---|---|
-| `flights-base` | Buckets, KMS key, IAM role de Glue, topic de SNS | Queda creado todo el proyecto (cuesta centavos) |
+| `flights-base` | Buckets, KMS key, IAM role de Glue, topic de SNS | Queda creado todo el proyecto (cuesta centavos). Se creó **a mano**; pasarlo a CloudFormation es una mejora pendiente |
 | `flights-orquestacion` | EventBridge, Step Functions, alarma | Queda creado; no cobra si no corre |
 
-- `aws/scripts/down.sh` apaga todo lo que cobra. `aws/scripts/vivos.sh` lista lo que está encendido.
+- `aws/scripts/vivos.sh` lista lo que está encendido. No hay un `down.sh`: el apagado final del proyecto (borrar recursos) se hace a mano, con mi confirmación explícita en cada borrado.
 
 **Al empezar cada sesión**
 
 1. Leé `PROGRESO.md` y la fase en curso de `docs/PLAN.md`, y decime en dos líneas dónde quedamos.
 2. Corré `aws sts get-caller-identity --profile flights` para confirmar cuenta e identidad.
-3. Corré `aws/scripts/vivos.sh` (cuando exista) y avisame si quedó algo encendido.
+3. Corré `aws/scripts/vivos.sh` y avisame si quedó algo encendido.
 
 **Al terminar cada sesión**
 
@@ -107,9 +107,4 @@ Listame qué recursos quedan encendidos y cuánto cuestan por día.
 
 ## Cómo arrancamos
 
-Esto vale solo la primera vez, mientras la fase 0 no esté cerrada. Después, seguí la rutina de "Al empezar cada sesión".
-
-1. Leé `docs/PLAN.md` y mirá el diagrama. Confirmame en cinco líneas que entendiste el proyecto, las reglas de costos (incluido que solo entran servicios del plan gratuito) y la forma de guiarme.
-2. Revisá qué tengo instalado: `aws --version`, `docker --version`, `python --version`, `git --version`. Decime qué falta (el AWS CLI no estaba instalado). Trabajo en Windows con Git Bash: dame los comandos para ese shell.
-3. Leé la sección "Pendientes por verificar" del plan. Resolvé primero la región del proyecto y cómo se conecta la CLI, verificando en la documentación oficial.
-4. `PROGRESO.md` ya existe. Empezá por el primer paso de la Fase 0, que es el presupuesto en AWS Budgets, una vez resueltos los pendientes del punto 3.
+El arranque del proyecto ya está hecho: la fase 0 (CLI, región, presupuesto y base) se cerró el 2026-10-11, y las fases 0 a 4 están terminadas. Seguí la rutina de "Al empezar cada sesión"; el estado actual y las decisiones están en `PROGRESO.md`. Trabajo en Windows con Git Bash: dame los comandos para ese shell.

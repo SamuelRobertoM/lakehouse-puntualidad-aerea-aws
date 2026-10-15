@@ -14,6 +14,12 @@ Es un caso ficticio con datos públicos reales: el equipo de operaciones de una 
 
 El trabajo del pipeline es que esos números sean confiables: limpia lo que llega sucio, aparta lo rechazado con su motivo y modela los datos para que un analista los consulte sin tocar el dato crudo.
 
+## Lo que ve el analista
+
+Un dashboard HTML autocontenido, alimentado por consultas de Athena sobre la capa de oro ([abrir el archivo](docs/dashboard/dashboard-gold.html) en el navegador; no necesita internet). Filtra por mes, ordena por los más o los menos puntuales, y cada gráfico tiene su tabla equivalente.
+
+![Dashboard de puntualidad aérea](docs/dashboard/captura.png)
+
 ## Cómo está armado
 
 | Capa | Qué hace |
@@ -75,6 +81,10 @@ data/              datos descargados (no se suben a git)
 ## Los datos
 
 Los datos no están en el repo: se bajan con `scripts/download_data.py` desde el sitio de BTS (Bureau of Transportation Statistics, gobierno de EE. UU.). No se pudo verificar un texto de licencia explícito en su página, así que conviene revisar los términos de uso antes de redistribuirlos.
+
+## Licencia
+
+El código y la documentación están bajo licencia MIT (ver [LICENSE](LICENSE)). Los datos de BTS no se incluyen y tienen sus propios términos de uso.
 
 ## Estado
 
