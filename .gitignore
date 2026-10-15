@@ -1,0 +1,26 @@
+data/*
+!data/.gitkeep
+.pytest_cache/
+__pycache__/
+*.pyc
+.venv/
+spark-warehouse/
+metastore_db/
+derby.log
+.ipynb_checkpoints/
+
+# Credenciales y artefactos de AWS (reglas de CLAUDE.md)
+.env
+.env.*
+.aws-sam/
+*.pem
+*.key
+
+# Plantillas de CloudFormation empaquetadas (las genera aws/scripts/up.sh)
+infra/*.packaged.yaml
+
+# Archivos del sistema y de editores
+.DS_Store
+Thumbs.db
+*.swp
+.idea/

@@ -1,0 +1,22 @@
+# Reglas de calidad de silver (tabla flights_silver.flights), evaluadas sobre el mes que se acaba de procesar.
+# Miran el CONJUNTO del mes. Lo que es fila por fila (distancia <= 0, fecha fuera del mes, etc.)
+# ya lo rechaza el job 1 hacia quarantine, así que acá no se repite.
+# Umbrales calibrados con enero y febrero de 2024 (ver PROGRESO.md).
+Rules = [
+    # Volumen: un mes normal tiene entre 519.221 y 547.271 filas. Un archivo truncado o vacío no pasa.
+    RowCount > 400000,
+
+    # Matrícula informada: real 99,03 % (enero) y 99,92 % (febrero).
+    Completeness "tail_number" > 0.95,
+
+    # Demora de llegada informada: real 96,0 % y 99,24 %.
+    # No se exige 100 %: los cancelados y los desviados no tienen ArrDelay y es correcto.
+    Completeness "arr_delay" > 0.93,
+
+    # Distancia razonable, en millas: real de 31 a 5095. "between" excluye los extremos.
+    ColumnValues "distance" between 0 and 6000,
+
+    # Demora promedio razonable, en minutos: real 0,59 (febrero) y 10,35 (enero).
+    # No se exige que sea >= 0: llegar antes de hora es válido, y más de la mitad de los vuelos lo hace.
+    Mean "arr_delay" between -20 and 45
+]

@@ -1,0 +1,399 @@
+{
+  "Comment": "Pipeline de puntualidad aerea: Job 1 -> crawler de silver (registra la particion) -> Data Quality -> Job 2 (gold) -> crawler de gold -> aviso. Si la calidad falla se retira la particion y gold no se toca. Entrada: el evento de S3 (EventBridge) o {\"year\":\"2024\",\"month\":\"03\"} con el mes en dos digitos. Los ${...} se reemplazan al desplegar (DefinitionSubstitutions).",
+  "StartAt": "ElegirOrigen",
+  "TimeoutSeconds": 3600,
+  "States": {
+
+    "ElegirOrigen": {
+      "Type": "Choice",
+      "Comment": "Si llega el evento de S3 (tiene detail.object.key) se saca el mes de la ruta; si no, el mes viene en la entrada.",
+      "Choices": [
+        { "Variable": "$.detail.object.key", "IsPresent": true, "Next": "ParsearEventoS3" }
+      ],
+      "Default": "ArmarParametros"
+    },
+
+    "ParsearEventoS3": {
+      "Type": "Pass",
+      "Comment": "flights/year=2024/month=03/archivo.csv -> year=2024, month=03",
+      "Parameters": {
+        "year.$": "States.ArrayGetItem(States.StringSplit(States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), 1), '='), 1)",
+        "month.$": "States.ArrayGetItem(States.StringSplit(States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), 2), '='), 1)"
+      },
+      "ResultPath": "$.entrada",
+      "Next": "EjecutarJob1"
+    },
+
+    "ArmarParametros": {
+      "Type": "Pass",
+      "Parameters": {
+        "year.$": "$.year",
+        "month.$": "$.month"
+      },
+      "ResultPath": "$.entrada",
+      "Next": "EjecutarJob1"
+    },
+
+    "EjecutarJob1": {
+      "Type": "Task",
+      "Comment": "Integracion optimizada .sync: Step Functions arranca el job y ESPERA a que termine. El job es idempotente, por eso reintentarlo es seguro.",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${JobName}",
+        "Arguments": {
+          "--year.$": "$.entrada.year",
+          "--month.$": "$.entrada.month"
+        }
+      },
+      "ResultPath": "$.job1",
+      "TimeoutSeconds": 1200,
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.ConcurrentRunsExceededException"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 5,
+          "BackoffRate": 1.5
+        },
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 1,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "EjecutarCrawler"
+    },
+
+    "IniciarCalidad": {
+      "Type": "Task",
+      "Comment": "Integracion SDK (sin .sync): solo ARRANCA la evaluacion y devuelve el RunId. Despues hay que esperar y consultar.",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startDataQualityRulesetEvaluationRun",
+      "Parameters": {
+        "DataSource": {
+          "GlueTable": {
+            "DatabaseName": "${SilverDatabase}",
+            "TableName": "${SilverTable}",
+            "AdditionalOptions": {
+              "pushDownPredicate.$": "States.Format('year = \\'{}\\' and month = \\'{}\\'', $.entrada.year, $.entrada.month)"
+            }
+          }
+        },
+        "Role": "${GlueRoleName}",
+        "NumberOfWorkers": 2,
+        "Timeout": 10,
+        "RulesetNames": ["${RulesetName}"]
+      },
+      "ResultPath": "$.dq",
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "EsperarCalidad"
+    },
+
+    "EsperarCalidad": {
+      "Type": "Wait",
+      "Seconds": 20,
+      "Next": "ConsultarCalidad"
+    },
+
+    "ConsultarCalidad": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getDataQualityRulesetEvaluationRun",
+      "Parameters": {
+        "RunId.$": "$.dq.RunId"
+      },
+      "ResultPath": "$.dqEstado",
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "CalidadTermino"
+    },
+
+    "CalidadTermino": {
+      "Type": "Choice",
+      "Comment": "Bucle de espera y consulta. La evaluacion tiene tope de 10 minutos, asi que termina en TIMEOUT y el bucle no es infinito.",
+      "Choices": [
+        { "Variable": "$.dqEstado.Status", "StringEquals": "SUCCEEDED", "Next": "LeerResultadoCalidad" },
+        {
+          "Or": [
+            { "Variable": "$.dqEstado.Status", "StringEquals": "FAILED" },
+            { "Variable": "$.dqEstado.Status", "StringEquals": "STOPPED" },
+            { "Variable": "$.dqEstado.Status", "StringEquals": "TIMEOUT" }
+          ],
+          "Next": "FalloEvaluacion"
+        }
+      ],
+      "Default": "EsperarCalidad"
+    },
+
+    "FalloEvaluacion": {
+      "Type": "Pass",
+      "Parameters": {
+        "Error": "EvaluacionDeCalidadFallo",
+        "Cause.$": "States.Format('La evaluacion de calidad termino en estado {}', $.dqEstado.Status)"
+      },
+      "ResultPath": "$.error",
+      "Next": "AvisarError"
+    },
+
+    "LeerResultadoCalidad": {
+      "Type": "Task",
+      "Comment": "SUCCEEDED solo dice que la evaluacion CORRIO. Si las reglas pasaron o no esta en el resultado (Score).",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getDataQualityResult",
+      "Parameters": {
+        "ResultId.$": "$.dqEstado.ResultIds[0]"
+      },
+      "ResultPath": "$.dqResultado",
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "PasoLaCalidad"
+    },
+
+    "PasoLaCalidad": {
+      "Type": "Choice",
+      "Comment": "Se exigen TODAS las reglas: puntaje 1. Si pasa, se construye gold; si no, se retira la particion de silver y gold ni se toca.",
+      "Choices": [
+        { "Variable": "$.dqResultado.Score", "NumericEquals": 1, "Next": "EjecutarJob2" }
+      ],
+      "Default": "RetirarParticion"
+    },
+
+    "EjecutarJob2": {
+      "Type": "Task",
+      "Comment": "Gold se construye SOLO con silver que ya paso la calidad (por eso va despues de PasoLaCalidad). El job es idempotente (reemplaza la carpeta del mes y las dimensiones enteras), asi que reintentarlo es seguro. Si falla, la particion de silver se deja: es valida.",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "${GoldJobName}",
+        "Arguments": {
+          "--year.$": "$.entrada.year",
+          "--month.$": "$.entrada.month"
+        }
+      },
+      "ResultPath": "$.job2",
+      "TimeoutSeconds": 1200,
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.ConcurrentRunsExceededException"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 5,
+          "BackoffRate": 1.5
+        },
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 60,
+          "MaxAttempts": 1,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "EjecutarCrawlerGold"
+    },
+
+    "EjecutarCrawlerGold": {
+      "Type": "Task",
+      "Comment": "Registra en el catalogo la particion nueva de fact_flights y agg_daily_airport (las dimensiones no cambian de lugar).",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "${GoldCrawlerName}"
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["Glue.CrawlerRunningException"], "ResultPath": null, "Next": "EsperarCrawlerGold" },
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "EsperarCrawlerGold"
+    },
+
+    "EsperarCrawlerGold": {
+      "Type": "Wait",
+      "Comment": "20 segundos: da tiempo a que el crawler pase de READY a RUNNING antes de la primera consulta.",
+      "Seconds": 20,
+      "Next": "ConsultarCrawlerGold"
+    },
+
+    "ConsultarCrawlerGold": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "${GoldCrawlerName}"
+      },
+      "ResultPath": "$.crawlerGold",
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "CrawlerGoldTermino"
+    },
+
+    "CrawlerGoldTermino": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            { "Variable": "$.crawlerGold.Crawler.State", "StringEquals": "READY" },
+            { "Variable": "$.crawlerGold.Crawler.LastCrawl.Status", "StringEquals": "SUCCEEDED" }
+          ],
+          "Next": "AvisarExito"
+        },
+        {
+          "And": [
+            { "Variable": "$.crawlerGold.Crawler.State", "StringEquals": "READY" },
+            { "Variable": "$.crawlerGold.Crawler.LastCrawl.Status", "StringEquals": "FAILED" }
+          ],
+          "Next": "FalloCrawlerGold"
+        }
+      ],
+      "Default": "EsperarCrawlerGold"
+    },
+
+    "FalloCrawlerGold": {
+      "Type": "Pass",
+      "Parameters": {
+        "Error": "CrawlerGoldFallo",
+        "Cause": "La ultima corrida del crawler de gold termino en FAILED"
+      },
+      "ResultPath": "$.error",
+      "Next": "AvisarError"
+    },
+
+    "RetirarParticion": {
+      "Type": "Task",
+      "Comment": "La particion se registro ANTES de evaluar la calidad (la evaluacion lee por el catalogo). Si la calidad falla, se retira para que nadie consulte datos malos. Los archivos siguen en S3.",
+      "Resource": "arn:aws:states:::aws-sdk:glue:deletePartition",
+      "Parameters": {
+        "DatabaseName": "${SilverDatabase}",
+        "TableName": "${SilverTable}",
+        "PartitionValues.$": "States.Array($.entrada.year, $.entrada.month)"
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.errorRetiro", "Next": "AvisarCalidadFallo" }
+      ],
+      "Next": "AvisarCalidadFallo"
+    },
+
+    "AvisarCalidadFallo": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${TopicArn}",
+        "Subject": "Flights: la CALIDAD de silver NO paso",
+        "Message.$": "States.Format('La evaluacion de calidad de {}-{} dio puntaje {} (se exigen todas las reglas). Se intento retirar la particion del catalogo; los archivos siguen en S3. Ejecucion: {}', $.entrada.year, $.entrada.month, $.dqResultado.Score, $$.Execution.Name)"
+      },
+      "ResultPath": null,
+      "Next": "CalidadNoPaso"
+    },
+
+    "CalidadNoPaso": {
+      "Type": "Fail",
+      "Error": "CalidadNoPaso",
+      "Cause": "El puntaje de Glue Data Quality fue menor que 1"
+    },
+
+    "EjecutarCrawler": {
+      "Type": "Task",
+      "Comment": "Va ANTES de la calidad: registra la particion nueva en el catalogo, y la evaluacion de Data Quality lee la tabla por el catalogo.",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "${CrawlerName}"
+      },
+      "ResultPath": null,
+      "Catch": [
+        { "ErrorEquals": ["Glue.CrawlerRunningException"], "ResultPath": null, "Next": "EsperarCrawler" },
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "EsperarCrawler"
+    },
+
+    "EsperarCrawler": {
+      "Type": "Wait",
+      "Comment": "20 segundos: da tiempo a que el crawler pase de READY a RUNNING antes de la primera consulta.",
+      "Seconds": 20,
+      "Next": "ConsultarCrawler"
+    },
+
+    "ConsultarCrawler": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "${CrawlerName}"
+      },
+      "ResultPath": "$.crawler",
+      "Catch": [
+        { "ErrorEquals": ["States.ALL"], "ResultPath": "$.error", "Next": "AvisarError" }
+      ],
+      "Next": "CrawlerTermino"
+    },
+
+    "CrawlerTermino": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            { "Variable": "$.crawler.Crawler.State", "StringEquals": "READY" },
+            { "Variable": "$.crawler.Crawler.LastCrawl.Status", "StringEquals": "SUCCEEDED" }
+          ],
+          "Next": "IniciarCalidad"
+        },
+        {
+          "And": [
+            { "Variable": "$.crawler.Crawler.State", "StringEquals": "READY" },
+            { "Variable": "$.crawler.Crawler.LastCrawl.Status", "StringEquals": "FAILED" }
+          ],
+          "Next": "FalloCrawler"
+        }
+      ],
+      "Default": "EsperarCrawler"
+    },
+
+    "FalloCrawler": {
+      "Type": "Pass",
+      "Parameters": {
+        "Error": "CrawlerFallo",
+        "Cause": "La ultima corrida del crawler termino en FAILED"
+      },
+      "ResultPath": "$.error",
+      "Next": "AvisarError"
+    },
+
+    "AvisarExito": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${TopicArn}",
+        "Subject": "Flights: pipeline OK",
+        "Message.$": "States.Format('{}-{} procesado: job 1 OK, calidad OK (puntaje {}), gold actualizado (job 2 y crawler de gold OK). Ejecucion: {}', $.entrada.year, $.entrada.month, $.dqResultado.Score, $$.Execution.Name)"
+      },
+      "ResultPath": null,
+      "Next": "Exito"
+    },
+
+    "Exito": {
+      "Type": "Succeed"
+    },
+
+    "AvisarError": {
+      "Type": "Task",
+      "Comment": "Punto unico de aviso para cualquier error tecnico (job, evaluacion, crawler).",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "${TopicArn}",
+        "Subject": "Flights: el pipeline FALLO",
+        "Message.$": "States.Format('El pipeline fallo para {}-{}. Error: {}. Detalle: {}. Ejecucion: {}', $.entrada.year, $.entrada.month, $.error.Error, $.error.Cause, $$.Execution.Name)"
+      },
+      "ResultPath": null,
+      "Next": "PipelineFallido"
+    },
+
+    "PipelineFallido": {
+      "Type": "Fail",
+      "Error": "PipelineFallido",
+      "Cause": "Fallo un paso tecnico del pipeline: ver el mail de aviso y el historial de la ejecucion"
+    }
+  }
+}

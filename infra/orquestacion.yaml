@@ -1,0 +1,251 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Orquestacion del lakehouse de puntualidad aerea: state machine (job 1, crawler de silver, Data Quality, job 2 y crawler de gold),
+  reglas de EventBridge (archivo nuevo en bronce y horario), logs y alarma. No crea buckets, KMS ni
+  topic: esos recursos ya existen (stack "base", creado a mano) y se referencian por nombre.
+
+Parameters:
+  GlueRoleName:
+    Type: String
+    Default: AWSGlueServiceRole-flights
+  JobName:
+    Type: String
+    Default: flights-bronze-to-silver
+  GoldJobName:
+    Type: String
+    Default: flights-silver-to-gold
+  CrawlerName:
+    Type: String
+    Default: flights-silver-crawler
+  GoldCrawlerName:
+    Type: String
+    Default: flights-gold-crawler
+  RulesetName:
+    Type: String
+    Default: flights-silver-dq
+  SilverDatabase:
+    Type: String
+    Default: flights_silver
+  SilverTable:
+    Type: String
+    Default: flights
+  TopicName:
+    Type: String
+    Default: flights-alerts
+
+Resources:
+
+  # ------------------------------------------------------------------ logs de la state machine
+  LogGroupPipeline:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/vendedlogs/states/flights-pipeline
+      RetentionInDays: 14
+
+  # ------------------------------------------------------------------ role de la state machine
+  # Least privilege: cada servicio con sus acciones. Los de Data Quality van sobre "*" porque
+  # sus recursos (rulesets y evaluaciones) cambian de ARN; es lo primero a ajustar si se endurece.
+  RolePipeline:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: pipeline-glue-job
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - glue:StartJobRun
+                  - glue:GetJobRun
+                  - glue:GetJobRuns
+                  - glue:BatchStopJobRun
+                Resource:
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${JobName}
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:job/${GoldJobName}
+        - PolicyName: pipeline-glue-data-quality
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - glue:StartDataQualityRulesetEvaluationRun
+                  - glue:GetDataQualityRulesetEvaluationRun
+                  - glue:GetDataQualityResult
+                  - glue:GetDataQualityRuleset
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - glue:GetDatabase
+                  - glue:GetTable
+                  - glue:GetPartitions
+                  - glue:DeletePartition  # retirar la particion si la calidad falla
+                Resource:
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:catalog
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:database/${SilverDatabase}
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:table/${SilverDatabase}/${SilverTable}
+              # La evaluacion corre con el role de Glue: la state machine solo puede "pasarselo" a Glue.
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub arn:aws:iam::${AWS::AccountId}:role/${GlueRoleName}
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: glue.amazonaws.com
+        - PolicyName: pipeline-glue-crawler
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - glue:StartCrawler
+                  - glue:GetCrawler
+                Resource:
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:crawler/${CrawlerName}
+                  - !Sub arn:aws:glue:${AWS::Region}:${AWS::AccountId}:crawler/${GoldCrawlerName}
+        - PolicyName: pipeline-sns
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${TopicName}
+        # Permisos que Step Functions exige para escribir sus logs en CloudWatch.
+        - PolicyName: pipeline-logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogDelivery
+                  - logs:GetLogDelivery
+                  - logs:UpdateLogDelivery
+                  - logs:DeleteLogDelivery
+                  - logs:ListLogDeliveries
+                  - logs:PutResourcePolicy
+                  - logs:DescribeResourcePolicies
+                  - logs:DescribeLogGroups
+                Resource: "*"
+
+  # ------------------------------------------------------------------ la state machine
+  # La definicion vive en statemachine/pipeline.asl.json. "aws cloudformation package" la sube a S3
+  # y reemplaza esta ruta por {Bucket, Key}; los ${...} del JSON se completan con DefinitionSubstitutions.
+  MaquinaPipeline:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: flights-pipeline
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt RolePipeline.Arn
+      DefinitionS3Location: ../statemachine/pipeline.asl.json
+      DefinitionSubstitutions:
+        JobName: !Ref JobName
+        GoldJobName: !Ref GoldJobName
+        CrawlerName: !Ref CrawlerName
+        GoldCrawlerName: !Ref GoldCrawlerName
+        RulesetName: !Ref RulesetName
+        SilverDatabase: !Ref SilverDatabase
+        SilverTable: !Ref SilverTable
+        GlueRoleName: !Ref GlueRoleName
+        TopicArn: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${TopicName}
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt LogGroupPipeline.Arn
+
+  # ------------------------------------------------------------------ EventBridge
+  RoleEventBridge:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: iniciar-pipeline
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
+                Resource: !GetAtt MaquinaPipeline.Arn
+
+  # Un CSV nuevo en flights/ de bronce arranca el pipeline. Los lookups quedan afuera (otro prefijo).
+  # Requiere que el bucket de bronce tenga activadas las notificaciones a EventBridge.
+  ReglaArchivoNuevo:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: flights-archivo-nuevo-en-bronce
+      Description: Arranca el pipeline cuando llega un CSV de vuelos a bronce
+      State: ENABLED
+      EventPattern:
+        source: [aws.s3]
+        detail-type: [Object Created]
+        detail:
+          bucket:
+            name: [!Sub "flights-bronze-${AWS::AccountId}-${AWS::Region}-an"]
+          object:
+            key:
+              - prefix: flights/
+      Targets:
+        - Id: pipeline
+          Arn: !GetAtt MaquinaPipeline.Arn
+          RoleArn: !GetAtt RoleEventBridge.Arn
+
+  # Disparador por horario, APAGADO a proposito: nada corre solo mientras no se esta mirando.
+  # Para usarlo: activarlo y editar el mes de la entrada (el horario no sabe que mes toca).
+  ReglaHorario:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: flights-horario-mensual
+      Description: Ejemplo de disparo por horario (deshabilitado). El mes de la entrada hay que editarlo.
+      State: DISABLED
+      ScheduleExpression: cron(0 6 1 * ? *)
+      Targets:
+        - Id: pipeline
+          Arn: !GetAtt MaquinaPipeline.Arn
+          RoleArn: !GetAtt RoleEventBridge.Arn
+          Input: '{"year":"2024","month":"03"}'
+
+  # ------------------------------------------------------------------ alarma
+  # Red de seguridad: avisa por SNS si alguna ejecucion termina en FAILED.
+  # Si la ejecucion ya aviso por su cuenta, llegan dos mails: el detalle y la alarma. Es esperado.
+  AlarmaEjecucionFallida:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: flights-pipeline-ejecucion-fallida
+      AlarmDescription: Una ejecucion de la state machine flights-pipeline termino en FAILED
+      Namespace: AWS/States
+      MetricName: ExecutionsFailed
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !GetAtt MaquinaPipeline.Arn
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${TopicName}
+
+Outputs:
+  StateMachineArn:
+    Value: !GetAtt MaquinaPipeline.Arn
+  LogGroup:
+    Value: !Ref LogGroupPipeline

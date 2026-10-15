@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Puntualidad aérea EE. UU.</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,.10); --hover: rgba(11,11,11,.05);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --wash: rgba(42,120,214,.10);
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --hover: rgba(255,255,255,.06);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --wash: rgba(57,135,229,.12);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,.10); --hover: rgba(255,255,255,.06);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --wash: rgba(57,135,229,.12);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+h1 { font-size: 22px; font-weight: 650; margin: 0 0 2px; }
+.sub { color: var(--ink2); margin: 0; font-size: 13px; }
+button, select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover, select:hover { background: var(--hover); }
+button:focus-visible, select:focus-visible, .seg button:focus-visible { outline: 2px solid var(--s1); outline-offset: 1px; }
+.filters { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.filters label { color: var(--ink2); font-size: 12px; margin-right: 8px; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; border-radius: 0; background: transparent; padding: 6px 14px; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed="true"] { font-weight: 650; background: var(--hover); box-shadow: inset 0 -2px 0 var(--s1); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 14px; }
+.tile, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+.tile { padding: 14px 16px; }
+.tile .l { color: var(--ink2); font-size: 12px; }
+.tile .v { font-size: 28px; font-weight: 650; line-height: 1.2; margin: 2px 0; }
+.tile .n { color: var(--muted); font-size: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.card { padding: 14px 16px 12px; min-width: 0; }
+.card .hd { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.card h2 { font-size: 14px; font-weight: 650; margin: 0; }
+.card .cs { color: var(--ink2); font-size: 12px; margin: 1px 0 0; }
+.card .tg { font-size: 12px; padding: 3px 10px; white-space: nowrap; }
+svg { display: block; overflow: visible; }
+svg text { font: 11px system-ui, -apple-system, "Segoe UI", sans-serif; fill: var(--muted); }
+svg text.ink { fill: var(--ink); } svg text.ink2 { fill: var(--ink2); } svg text.val { fill: var(--ink); font-weight: 600; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 8px; font-size: 12px; color: var(--ink2); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.tablewrap { max-height: 330px; overflow: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { position: sticky; top: 0; background: var(--surface); color: var(--ink2); font-weight: 600; font-size: 12px; }
+th.sortable { cursor: pointer; user-select: none; } th.sortable:hover { color: var(--ink); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr:hover td { background: var(--hover); }
+.tip { position: fixed; z-index: 10; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; box-shadow: 0 4px 14px rgba(0,0,0,.14); font-size: 12px; display: none; max-width: 260px; }
+.tip .t { color: var(--ink2); margin-bottom: 4px; }
+.tip .r { display: flex; justify-content: space-between; gap: 16px; } .tip .r b { color: var(--ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+.tip .r span { color: var(--ink2); }
+.tip .k { display: inline-block; width: 10px; height: 2px; margin-right: 6px; vertical-align: middle; }
+footer { color: var(--muted); font-size: 12px; margin-top: 8px; line-height: 1.6; }
+@media (max-width: 520px) { .grid2 { grid-template-columns: 1fr; } }
+@media print { .filters, .tg, #tema { display: none; } body { background: #fff; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Puntualidad aérea en EE. UU.</h1>
+      <p class="sub">Vuelos domésticos, enero a marzo de 2024 · capa gold del lakehouse (<span id="origen">flights_gold</span>, consultada con Athena)</p>
+    </div>
+    <button id="tema" type="button" aria-label="Cambiar entre tema claro y oscuro">Tema claro / oscuro</button>
+  </header>
+
+  <div class="filters" role="group" aria-label="Filtros">
+    <div><label>Mes</label><span class="seg" id="f-mes"></span></div>
+    <div><label>Rankings</label><span class="seg" id="f-rank"></span></div>
+    <div><label for="f-min">Aeropuertos con al menos</label>
+      <select id="f-min"><option value="1000">1.000 vuelos operados</option><option value="3000">3.000 vuelos operados</option><option value="5000">5.000 vuelos operados</option><option value="10000">10.000 vuelos operados</option></select></div>
+  </div>
+
+  <section class="tiles" id="tiles" aria-label="Indicadores principales"></section>
+
+  <div class="grid2">
+    <section class="card" id="c-demora"><div class="hd"><div><h2>Demora media de llegada por día</h2><p class="cs">Minutos, solo vuelos operados</p></div><button class="tg" type="button"></button></div><div class="body"></div></section>
+    <section class="card" id="c-cancel"><div class="hd"><div><h2>Cancelaciones por día</h2><p class="cs">% de los vuelos programados</p></div><button class="tg" type="button"></button></div><div class="body"></div></section>
+  </div>
+
+  <div class="grid2">
+    <section class="card" id="c-aero"><div class="hd"><div><h2>Aeropuertos de origen con más demora</h2><p class="cs">Demora media de llegada, minutos · 10 peores</p></div><button class="tg" type="button"></button></div><div class="body"></div></section>
+    <section class="card" id="c-aline"><div class="hd"><div><h2>Aerolíneas por demora</h2><p class="cs">Demora media de llegada, minutos · el nombre sale de dim_carrier</p></div><button class="tg" type="button"></button></div><div class="body"></div></section>
+  </div>
+
+  <div class="grid2">
+    <section class="card" id="c-causas"><div class="hd"><div><h2>Qué causa las demoras</h2><p class="cs">Reparto de los minutos de demora por causa (solo vuelos con 15 min o más)</p></div><button class="tg" type="button"></button></div><div class="body"></div></section>
+    <section class="card" id="c-franja"><div class="hd"><div><h2>Puntualidad según la hora de salida</h2><p class="cs">% de vuelos con demora de 15 min o más en la llegada</p></div><button class="tg" type="button"></button></div><div class="body"></div></section>
+  </div>
+
+  <section class="card" id="c-tabla"><div class="hd"><div><h2>Detalle por aeropuerto</h2><p class="cs">Tocá un encabezado para ordenar</p></div></div><div class="body"></div></section>
+
+  <footer>
+    <div>Fuente: <b>flights_gold</b> (<code>fact_flights</code>, <code>agg_daily_airport</code>, <code>dim_carrier</code>) · consultado con Athena el <span id="generado"></span>.</div>
+    <div>Las demoras se calculan sobre vuelos operados (sin cancelados ni desviados); una demora negativa es un vuelo adelantado. Las causas solo existen para vuelos con 15 minutos o más de demora. El promedio se calcula como suma ÷ cantidad, no como promedio de promedios.</div>
+  </footer>
+</div>
+<div class="tip" id="tip" role="status"></div>
+
+<script>
+const DATA = /*DATA*/null;
+
+const MESES = { 1: 'Enero', 2: 'Febrero', 3: 'Marzo' };
+const MES3 = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+const nf0 = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
+const nf1base = new Intl.NumberFormat('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+const nf1 = { format: v => nf1base.format(Math.abs(v) < 0.05 ? 0 : v) };  // evita "-0,0"
+const $ = (s, r = document) => r.querySelector(s);
+const el = (tag, attrs = {}, parent) => {
+  const n = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+};
+const h = (tag, props = {}, kids = []) => {
+  const n = document.createElement(tag);
+  for (const k in props) { if (k === 'text') n.textContent = props[k]; else if (k === 'class') n.className = props[k]; else n.setAttribute(k, props[k]); }
+  kids.forEach(c => n.appendChild(c));
+  return n;
+};
+const div = (cls, text) => h('div', { class: cls, text });
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+// ---------- estado y filtros ----------
+const hash = new URLSearchParams(location.hash.slice(1));
+const S = { mes: +(hash.get('mes') || 0), min: +(hash.get('min') || 3000), orden: 'avg', dir: -1, rank: hash.get('rank') === 'mejores' ? 'mejores' : 'peores' };
+const vista = {};  // id de tarjeta -> 'grafico' | 'tabla'
+if (hash.get('tema')) document.documentElement.setAttribute('data-theme', hash.get('tema'));
+const enMes = m => S.mes === 0 || m === S.mes;
+const mesDe = dk => Math.floor(dk / 100) % 100;
+
+// ---------- agregaciones (suma y cantidad: nunca promedio de promedios) ----------
+const K = ['flights', 'operated', 'cancelled', 'delayed15', 'delay_sum', 'delay_n'];
+function acumular(rows, keyFn, extra) {
+  const m = new Map();
+  rows.forEach(r => {
+    const k = keyFn(r);
+    let o = m.get(k);
+    if (!o) { o = Object.assign({ key: k }, extra ? extra(r) : {}); K.forEach(f => o[f] = 0); m.set(k, o); }
+    K.forEach(f => o[f] += (r[f] || 0));
+  });
+  return [...m.values()];
+}
+const derivar = o => Object.assign(o, {
+  avg: o.delay_n ? o.delay_sum / o.delay_n : null,
+  pdem: o.operated ? o.delayed15 / o.operated * 100 : null,
+  pcan: o.flights ? o.cancelled / o.flights * 100 : null,
+});
+const tot = () => derivar(acumular(DATA.daily.filter(r => enMes(mesDe(r.date_key))), () => 1)[0]);
+const aeropuertos = () => acumular(DATA.airports.filter(r => enMes(r.month)), r => r.code, r => ({ code: r.code, city: r.city || '' })).map(derivar)
+  .filter(o => o.operated >= S.min && o.avg !== null);
+const aerolineas = () => acumular(DATA.carriers.filter(r => enMes(r.month)), r => r.code, r => ({ code: r.code, name: r.name })).map(derivar);
+
+// ---------- tooltip (siempre con textContent: los nombres son datos) ----------
+const tip = $('#tip');
+function mostrarTip(ev, titulo, filas, color) {
+  tip.replaceChildren(div('t', titulo), ...filas.map(([a, b], i) => {
+    const l = h('span', {}, i === 0 && color ? [h('i', { class: 'k', style: 'background:' + color }), document.createTextNode(a)] : [document.createTextNode(a)]);
+    return h('div', { class: 'r' }, [l, h('b', { text: b })]);
+  }));
+  tip.style.display = 'block';
+  const w = tip.offsetWidth, hh = tip.offsetHeight;
+  tip.style.left = Math.min(innerWidth - w - 8, ev.clientX + 14) + 'px';
+  tip.style.top = Math.min(innerHeight - hh - 8, ev.clientY + 14) + 'px';
+}
+const ocultarTip = () => { tip.style.display = 'none'; };
+
+// ---------- escalas ----------
+function ticks(min, max, n = 5) {
+  const span = max - min || 1, raw = span / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 2.5, 5, 10].map(f => f * mag).find(s => s >= raw);
+  const out = [];
+  for (let v = Math.ceil(min / step) * step; v <= max + 1e-9; v += step) out.push((Math.round(v * 1e6) / 1e6) || 0);  // "|| 0" evita el "-0,0"
+  return { vals: out, lo: Math.min(min, out[0]), hi: Math.max(max, out[out.length - 1]) };
+}
+const fecha = d => d.getDate() + ' ' + MES3[d.getMonth()];
+const lum = hex => { const c = hex.replace('#', ''); const [r, g, b] = [0, 2, 4].map(i => parseInt(c.substr(i, 2), 16) / 255).map(v => v <= .03928 ? v / 12.92 : Math.pow((v + .055) / 1.055, 2.4)); return .2126 * r + .7152 * g + .0722 * b; };
+
+// ---------- gráfico de líneas con cruz ----------
+function lineChart(box, pts, o) {
+  const W = Math.max(280, box.clientWidth), H = 240, m = { l: 44, r: 20, t: 14, b: 28 };
+  const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': o.aria }, box);
+  if (!pts.length) return;
+  const xs = pts.map(p => p.x.getTime()), x0 = Math.min(...xs), x1 = Math.max(...xs);
+  const ys = pts.map(p => p.y), t = ticks(Math.min(0, ...ys), Math.max(...ys));
+  const X = v => m.l + (x1 === x0 ? 0 : (v - x0) / (x1 - x0)) * (W - m.l - m.r);
+  const Y = v => H - m.b - (v - t.lo) / (t.hi - t.lo) * (H - m.t - m.b);
+  t.vals.forEach(v => {
+    el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css('--grid'), 'stroke-width': 1 }, svg);
+    el('text', { x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, svg).textContent = o.yFmt(v);
+  });
+  el('line', { x1: m.l, x2: W - m.r, y1: Y(Math.max(0, t.lo)), y2: Y(Math.max(0, t.lo)), stroke: css('--axis'), 'stroke-width': 1 }, svg);
+  const dias = (x1 - x0) / 864e5, paso = dias > 60 ? 14 : dias > 20 ? 7 : 3;
+  for (let i = 0; i <= dias; i += paso) {
+    const d = new Date(x0 + i * 864e5);
+    el('text', { x: X(d.getTime()), y: H - 8, 'text-anchor': i === 0 ? 'start' : 'middle' }, svg).textContent = fecha(d);
+  }
+  const col = css('--s1');
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + X(p.x.getTime()).toFixed(1) + ',' + Y(p.y).toFixed(1)).join('');
+  el('path', { d: d + `L${X(x1)},${Y(Math.max(0, t.lo))}L${X(x0)},${Y(Math.max(0, t.lo))}Z`, fill: css('--wash') }, svg);
+  el('path', { d, fill: 'none', stroke: col, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+  const mx = pts.reduce((a, p) => p.y > a.y ? p : a, pts[0]);
+  const px = X(mx.x.getTime()), py = Y(mx.y);
+  el('circle', { cx: px, cy: py, r: 4, fill: col, stroke: css('--surface'), 'stroke-width': 2 }, svg);
+  const alt = el('text', { x: px, y: py - 10, 'text-anchor': px > W * .75 ? 'end' : px < W * .15 ? 'start' : 'middle', class: 'val' }, svg);
+  alt.textContent = 'máx. ' + o.yFmt(mx.y) + ' · ' + fecha(mx.x);
+  const cruz = el('line', { y1: m.t, y2: H - m.b, stroke: css('--axis'), 'stroke-width': 1, visibility: 'hidden' }, svg);
+  const punto = el('circle', { r: 4, fill: col, stroke: css('--surface'), 'stroke-width': 2, visibility: 'hidden' }, svg);
+  const cap = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent', tabindex: 0 }, svg);
+  const cerca = ev => {
+    const r = svg.getBoundingClientRect(), vx = ev.clientX - r.left;
+    let mejor = pts[0], dist = 1e9;
+    pts.forEach(p => { const dd = Math.abs(X(p.x.getTime()) - vx); if (dd < dist) { dist = dd; mejor = p; } });
+    return mejor;
+  };
+  cap.addEventListener('pointermove', ev => {
+    const p = cerca(ev), cx = X(p.x.getTime());
+    cruz.setAttribute('x1', cx); cruz.setAttribute('x2', cx); cruz.setAttribute('visibility', 'visible');
+    punto.setAttribute('cx', cx); punto.setAttribute('cy', Y(p.y)); punto.setAttribute('visibility', 'visible');
+    mostrarTip(ev, fecha(p.x) + ' de 2024', [[o.serie, o.yFmt(p.y)], ...(p.extra || [])], col);
+  });
+  cap.addEventListener('pointerleave', () => { cruz.setAttribute('visibility', 'hidden'); punto.setAttribute('visibility', 'hidden'); ocultarTip(); });
+}
+
+// ---------- barras horizontales (un color, desde una línea base en 0) ----------
+function barPath(x0, x1, y, hh, r) {
+  const w = Math.abs(x1 - x0), rr = Math.min(r, w / 2, hh / 2);
+  if (x1 >= x0) return `M${x0},${y}h${w - rr}a${rr},${rr} 0 0 1 ${rr},${rr}v${hh - 2 * rr}a${rr},${rr} 0 0 1 ${-rr},${rr}h${-(w - rr)}z`;
+  return `M${x0},${y}h${-(w - rr)}a${rr},${rr} 0 0 0 ${-rr},${rr}v${hh - 2 * rr}a${rr},${rr} 0 0 0 ${rr},${rr}h${w - rr}z`;
+}
+function hBars(box, rows, o) {  // rows: [{label, value, tip:[titulo, [[a,b]...]]}]
+  const W = Math.max(300, box.clientWidth), rh = 28, bh = 16, m = { l: o.lw || 180, r: 56, t: 6, b: 24 };
+  const H = rows.length * rh + m.t + m.b;
+  const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': o.aria }, box);
+  if (!rows.length) return;
+  const vs = rows.map(r => r.value), t = ticks(Math.min(0, ...vs), Math.max(0, ...vs), 4);  // el 0 siempre entra en la escala
+  const neg = Math.min(0, ...vs) < 0, lo = neg ? t.lo - (t.hi - t.lo) * .14 : t.lo;
+  const X = v => m.l + (v - lo) / (t.hi - lo) * (W - m.l - m.r);
+  t.vals.forEach(v => {
+    el('line', { x1: X(v), x2: X(v), y1: m.t, y2: H - m.b, stroke: css('--grid'), 'stroke-width': 1 }, svg);
+    el('text', { x: X(v), y: H - 8, 'text-anchor': 'middle' }, svg).textContent = o.fmt(v);
+  });
+  el('line', { x1: X(0), x2: X(0), y1: m.t, y2: H - m.b, stroke: css('--axis'), 'stroke-width': 1 }, svg);
+  const col = css('--s1');
+  rows.forEach((r, i) => {
+    const y = m.t + i * rh, by = y + (rh - bh) / 2;
+    const lab = el('text', { x: m.l - 10, y: y + rh / 2 + 4, 'text-anchor': 'end', class: 'ink2' }, svg);
+    lab.textContent = r.label.length > 30 ? r.label.slice(0, 29) + '…' : r.label;
+    const bar = el('path', { d: barPath(X(0), X(r.value), by, bh, 4), fill: col }, svg);
+    const v = el('text', { x: r.value >= 0 ? X(r.value) + 6 : X(r.value) - 6, y: y + rh / 2 + 4, 'text-anchor': r.value >= 0 ? 'start' : 'end', class: 'val' }, svg);
+    v.textContent = o.fmt(r.value);
+    const hit = el('rect', { x: 0, y, width: W, height: rh, fill: 'transparent', tabindex: 0 }, svg);
+    const on = ev => { bar.setAttribute('opacity', .78); mostrarTip(ev, r.tip[0], r.tip[1], col); };
+    const off = () => { bar.removeAttribute('opacity'); ocultarTip(); };
+    hit.addEventListener('pointermove', on); hit.addEventListener('pointerleave', off);
+    hit.addEventListener('focus', () => { const b = hit.getBoundingClientRect(); on({ clientX: b.left + 80, clientY: b.top }); }); hit.addEventListener('blur', off);
+  });
+}
+
+// ---------- columnas ----------
+function columnas(box, rows, o) {  // rows: [{label, value, tip}]
+  const W = Math.max(300, box.clientWidth), H = 250, m = { l: 40, r: 10, t: 22, b: 40 };
+  const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': o.aria }, box);
+  if (!rows.length) return;
+  const t = ticks(0, Math.max(...rows.map(r => r.value))), slot = (W - m.l - m.r) / rows.length, bw = Math.min(24, slot - 6);
+  const Y = v => H - m.b - (v - t.lo) / (t.hi - t.lo) * (H - m.t - m.b);
+  t.vals.forEach(v => {
+    el('line', { x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v), stroke: css('--grid'), 'stroke-width': 1 }, svg);
+    el('text', { x: m.l - 8, y: Y(v) + 4, 'text-anchor': 'end' }, svg).textContent = o.fmt(v);
+  });
+  el('line', { x1: m.l, x2: W - m.r, y1: Y(0), y2: Y(0), stroke: css('--axis'), 'stroke-width': 1 }, svg);
+  const col = css('--s1'), mx = rows.reduce((a, r) => r.value > a.value ? r : a, rows[0]);
+  rows.forEach((r, i) => {
+    const cx = m.l + slot * i + slot / 2, x = cx - bw / 2, y = Y(r.value), hh = Y(0) - y, rr = Math.min(4, bw / 2, hh);
+    const bar = el('path', { d: `M${x},${Y(0)}v${-(hh - rr)}a${rr},${rr} 0 0 1 ${rr},${-rr}h${bw - 2 * rr}a${rr},${rr} 0 0 1 ${rr},${rr}v${hh - rr}z`, fill: col }, svg);
+    el('text', { x: cx, y: H - m.b + 15, 'text-anchor': 'middle' }, svg).textContent = r.label;
+    if (r === mx) el('text', { x: cx, y: y - 6, 'text-anchor': 'middle', class: 'val' }, svg).textContent = o.fmt(r.value);
+    const hit = el('rect', { x: m.l + slot * i, y: m.t, width: slot, height: H - m.t - m.b, fill: 'transparent', tabindex: 0 }, svg);
+    const on = ev => { bar.setAttribute('opacity', .78); mostrarTip(ev, r.tip[0], r.tip[1], col); };
+    const off = () => { bar.removeAttribute('opacity'); ocultarTip(); };
+    hit.addEventListener('pointermove', on); hit.addEventListener('pointerleave', off);
+    hit.addEventListener('focus', () => { const b = hit.getBoundingClientRect(); on({ clientX: b.left + 10, clientY: b.top + 30 }); }); hit.addEventListener('blur', off);
+  });
+  el('text', { x: m.l + (W - m.l - m.r) / 2, y: H - 2, 'text-anchor': 'middle' }, svg).textContent = 'Hora de salida programada (la primera columna reúne de 0 a 5 h)';
+}
+
+// ---------- barras apiladas al 100 % ----------
+const CAUSAS = [
+  { k: 'late_aircraft', n: 'Llegada tardía de la aeronave', c: '--s2' },
+  { k: 'carrier', n: 'Aerolínea', c: '--s1' },
+  { k: 'nas', n: 'Sistema aéreo nacional', c: '--s3' },
+  { k: 'weather', n: 'Clima', c: '--s4' },
+  { k: 'security', n: 'Seguridad', c: '--s5' },
+];
+function apiladas(box, filas) {  // filas: [{label, vals:{k:min}}]
+  box.appendChild(h('div', { class: 'legend' }, CAUSAS.map(c => h('span', {}, [h('i', { style: 'background:' + css(c.c) }), document.createTextNode(c.n)]))));
+  const W = Math.max(300, box.clientWidth), rh = 46, bh = 24, m = { l: 74, r: 10, t: 4, b: 22 }, H = filas.length * rh + m.t + m.b;
+  const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Reparto de los minutos de demora por causa y por mes' }, box);
+  const pw = W - m.l - m.r;
+  [0, 25, 50, 75, 100].forEach(v => {
+    const x = m.l + pw * v / 100;
+    el('line', { x1: x, x2: x, y1: m.t, y2: H - m.b, stroke: css('--grid'), 'stroke-width': 1 }, svg);
+    el('text', { x, y: H - 6, 'text-anchor': 'middle' }, svg).textContent = v + ' %';
+  });
+  filas.forEach((f, i) => {
+    const y = m.t + i * rh + (rh - bh) / 2, total = CAUSAS.reduce((a, c) => a + (f.vals[c.k] || 0), 0);
+    el('text', { x: m.l - 10, y: y + bh / 2 + 4, 'text-anchor': 'end', class: 'ink2' }, svg).textContent = f.label;
+    let x = m.l;
+    CAUSAS.forEach((c, j) => {
+      const share = total ? f.vals[c.k] / total : 0, w = pw * share, gap = j < CAUSAS.length - 1 ? 2 : 0;
+      if (w <= 0) return;
+      const fill = css(c.c);
+      const r = el('rect', { x, y, width: Math.max(1.5, w - gap), height: bh, fill, rx: 2 }, svg);
+      const txt = Math.round(share * 100) + ' %';
+      if (w - gap > txt.length * 6.6 + 14) {
+        const t = el('text', { x: x + (w - gap) / 2, y: y + bh / 2 + 4, 'text-anchor': 'middle', class: 'val' }, svg);
+        t.textContent = txt; t.style.fill = lum(fill.length === 7 ? fill : '#888888') > .32 ? '#0b0b0b' : '#ffffff';
+      }
+      const hit = el('rect', { x, y: y - 4, width: Math.max(8, w), height: bh + 8, fill: 'transparent', tabindex: 0 }, svg);
+      const on = ev => { r.setAttribute('opacity', .8); mostrarTip(ev, f.label + ' · ' + c.n, [['Minutos de demora', nf0.format(f.vals[c.k])], ['Parte del total', nf1.format(share * 100) + ' %']], fill); };
+      const off = () => { r.removeAttribute('opacity'); ocultarTip(); };
+      hit.addEventListener('pointermove', on); hit.addEventListener('pointerleave', off);
+      x += w;
+    });
+  });
+}
+
+// ---------- tablas ----------
+function tabla(box, def, sortable) {
+  const head = h('tr', {}, def.cols.map((c, i) => {
+    const th = h('th', { class: (c.num ? 'num ' : '') + (sortable ? 'sortable' : ''), text: c.t + (sortable && S.orden === c.k ? (S.dir < 0 ? ' ▼' : ' ▲') : '') });
+    if (sortable) th.addEventListener('click', () => { S.dir = S.orden === c.k ? -S.dir : -1; S.orden = c.k; render(); });
+    return th;
+  }));
+  const body = def.rows.map(r => h('tr', {}, r.map((v, i) => h('td', { class: def.cols[i].num ? 'num' : '', text: v }))));
+  box.appendChild(h('div', { class: 'tablewrap' }, [h('table', {}, [h('thead', {}, [head]), h('tbody', {}, body)])]));
+}
+
+// ---------- definición de cada tarjeta: gráfico y su tabla equivalente ----------
+const ahora = () => {
+  const d = DATA.daily.filter(r => enMes(mesDe(r.date_key)));
+  const diaria = d.map(r => { const s = String(r.date_key); return { x: new Date(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8)), r }; });
+  return diaria;
+};
+const TARJETAS = {
+  'c-demora': {
+    dibujar: box => {
+      const pts = ahora().filter(p => p.r.delay_n).map(p => ({ x: p.x, y: p.r.delay_sum / p.r.delay_n,
+        extra: [['Vuelos operados', nf0.format(p.r.operated)], ['Demorados 15+ min', nf1.format(p.r.delayed15 / p.r.operated * 100) + ' %']] }));
+      lineChart(box, pts, { yFmt: v => nf1.format(v), serie: 'Demora media (min)', aria: 'Demora media de llegada por día, en minutos' });
+    },
+    tabla: () => ({ cols: [{ t: 'Día' }, { t: 'Operados', num: 1 }, { t: 'Demora media (min)', num: 1 }, { t: 'Demorados 15+ (%)', num: 1 }],
+      rows: ahora().map(p => [fecha(p.x), nf0.format(p.r.operated), nf1.format(p.r.delay_sum / p.r.delay_n), nf1.format(p.r.delayed15 / p.r.operated * 100)]) }),
+  },
+  'c-cancel': {
+    dibujar: box => {
+      const pts = ahora().map(p => ({ x: p.x, y: p.r.cancelled / p.r.flights * 100, extra: [['Cancelados', nf0.format(p.r.cancelled) + ' de ' + nf0.format(p.r.flights)]] }));
+      lineChart(box, pts, { yFmt: v => nf1.format(v) + ' %', serie: 'Cancelados', aria: 'Porcentaje de vuelos cancelados por día' });
+    },
+    tabla: () => ({ cols: [{ t: 'Día' }, { t: 'Programados', num: 1 }, { t: 'Cancelados', num: 1 }, { t: 'Cancelados (%)', num: 1 }],
+      rows: ahora().map(p => [fecha(p.x), nf0.format(p.r.flights), nf0.format(p.r.cancelled), nf1.format(p.r.cancelled / p.r.flights * 100)]) }),
+  },
+  'c-aero': {
+    dibujar: box => hBars(box, topAeropuertos().map(a => ({ label: a.code + ' · ' + (a.city || 'sin ciudad'), value: a.avg,
+      tip: [a.code + ' · ' + a.city, [['Demora media', nf1.format(a.avg) + ' min'], ['Vuelos operados', nf0.format(a.operated)], ['Demorados 15+ min', nf1.format(a.pdem) + ' %'], ['Cancelados', nf1.format(a.pcan) + ' %']]] })),
+      { fmt: v => nf1.format(v), lw: 190, aria: 'Los diez aeropuertos de origen con mayor demora media de llegada' }),
+    tabla: () => ({ cols: [{ t: 'Aeropuerto' }, { t: 'Ciudad' }, { t: 'Operados', num: 1 }, { t: 'Demora media (min)', num: 1 }],
+      rows: topAeropuertos().map(a => [a.code, a.city, nf0.format(a.operated), nf1.format(a.avg)]) }),
+  },
+  'c-aline': {
+    dibujar: box => hBars(box, aerolineasOrdenadas().map(a => ({ label: a.name, value: a.avg,
+      tip: [a.name + ' (' + a.code + ')', [['Demora media', nf1.format(a.avg) + ' min'], ['Vuelos operados', nf0.format(a.operated)], ['Demorados 15+ min', nf1.format(a.pdem) + ' %'], ['Cancelados', nf1.format(a.pcan) + ' %']]] })),
+      { fmt: v => nf1.format(v), lw: 190, aria: 'Demora media de llegada por aerolínea' }),
+    tabla: () => ({ cols: [{ t: 'Aerolínea' }, { t: 'Operados', num: 1 }, { t: 'Demora media (min)', num: 1 }, { t: 'Demorados 15+ (%)', num: 1 }, { t: 'Cancelados (%)', num: 1 }],
+      rows: aerolineasOrdenadas().map(a => [a.name, nf0.format(a.operated), nf1.format(a.avg), nf1.format(a.pdem), nf1.format(a.pcan)]) }),
+  },
+  'c-causas': {
+    dibujar: box => apiladas(box, causasPorMes()),
+    tabla: () => ({ cols: [{ t: 'Mes' }, ...CAUSAS.map(c => ({ t: c.n + ' (min)', num: 1 }))],
+      rows: causasPorMes().map(f => [f.label, ...CAUSAS.map(c => nf0.format(f.vals[c.k]))]) }),
+  },
+  'c-franja': {
+    dibujar: box => columnas(box, franjas().map(f => ({ label: f.corto, value: f.pdem,
+      tip: ['Salida ' + f.blk.slice(0, 2) + ':' + f.blk.slice(2, 4) + ' a ' + f.blk.slice(5, 7) + ':' + f.blk.slice(7, 9), [['Demorados 15+ min', nf1.format(f.pdem) + ' %'], ['Demora media', nf1.format(f.avg) + ' min'], ['Vuelos operados', nf0.format(f.operated)]]] })),
+      { fmt: v => nf1.format(v) + ' %', aria: 'Porcentaje de vuelos demorados según la hora de salida' }),
+    tabla: () => ({ cols: [{ t: 'Franja de salida' }, { t: 'Operados', num: 1 }, { t: 'Demorados 15+ (%)', num: 1 }, { t: 'Demora media (min)', num: 1 }],
+      rows: franjas().map(f => [f.blk, nf0.format(f.operated), nf1.format(f.pdem), nf1.format(f.avg)]) }),
+  },
+};
+const signo = () => S.rank === 'mejores' ? -1 : 1;  // peores: mayor demora primero; mejores: menor demora (o adelantados) primero
+function topAeropuertos() { return aeropuertos().sort((a, b) => (b.avg - a.avg) * signo()).slice(0, 10); }
+function aerolineasOrdenadas() { return aerolineas().filter(a => a.avg !== null).sort((a, b) => (b.avg - a.avg) * signo()); }
+function causasPorMes() {
+  return [1, 2, 3].filter(enMes).map(m => ({ label: MESES[m], vals: DATA.causes.find(c => c.month === m) || {} }));
+}
+function franjas() {
+  return acumular(DATA.blocks.filter(r => enMes(r.month)), r => r.blk, r => ({ blk: r.blk })).map(derivar)
+    .filter(f => f.avg !== null).sort((a, b) => a.blk < b.blk ? -1 : 1)
+    .map(f => Object.assign(f, { corto: f.blk.startsWith('0001') ? '0-5' : String(+f.blk.slice(0, 2)) }));
+}
+
+if (hash.get('tablas')) Object.keys(TARJETAS).forEach(id => { vista[id] = 'tabla'; });  // #tablas=1 abre las tablas equivalentes
+
+// ---------- indicadores y tabla principal ----------
+function indicadores() {
+  const t = tot();
+  const items = [
+    ['Vuelos programados', nf0.format(t.flights), 'Todos los registrados en gold'],
+    ['Vuelos operados', nf0.format(t.operated), nf1.format(t.operated / t.flights * 100) + ' % de los programados'],
+    ['Demorados 15 min o más', nf1.format(t.pdem) + ' %', 'Llegada, sobre vuelos operados'],
+    ['Demora media de llegada', nf1.format(t.avg) + ' min', 'Suma ÷ cantidad, solo operados'],
+    ['Cancelados', nf1.format(t.pcan) + ' %', nf0.format(t.cancelled) + ' vuelos'],
+  ];
+  $('#tiles').replaceChildren(...items.map(([l, v, n]) => h('div', { class: 'tile' }, [div('l', l), div('v', v), div('n', n)])));
+}
+const COLS_AERO = [
+  { k: 'code', t: 'Aeropuerto' }, { k: 'city', t: 'Ciudad' }, { k: 'operated', t: 'Operados', num: 1 },
+  { k: 'avg', t: 'Demora media (min)', num: 1 }, { k: 'pdem', t: 'Demorados 15+ (%)', num: 1 }, { k: 'pcan', t: 'Cancelados (%)', num: 1 },
+];
+function tablaAeropuertos(box) {
+  const filas = aeropuertos().sort((a, b) => {
+    const x = a[S.orden], y = b[S.orden];
+    return (typeof x === 'string' ? x.localeCompare(y) : x - y) * S.dir;
+  });
+  box.appendChild(h('p', { class: 'cs', style: 'margin:0 0 8px', text: filas.length + ' aeropuertos con al menos ' + nf0.format(S.min) + ' vuelos operados en el período elegido.' }));
+  tabla(box, { cols: COLS_AERO, rows: filas.map(a => [a.code, a.city, nf0.format(a.operated), nf1.format(a.avg), nf1.format(a.pdem), nf1.format(a.pcan)]) }, true);
+}
+
+// ---------- render ----------
+function render() {
+  ocultarTip();
+  indicadores();
+  Object.keys(TARJETAS).forEach(id => {
+    const card = $('#' + id), box = $('.body', card), btn = $('.tg', card), ver = vista[id] === 'tabla';
+    btn.textContent = ver ? 'Ver gráfico' : 'Ver tabla';
+    btn.onclick = () => { vista[id] = ver ? 'grafico' : 'tabla'; render(); };
+    box.replaceChildren();
+    if (ver) tabla(box, TARJETAS[id].tabla(), false); else TARJETAS[id].dibujar(box);
+  });
+  const cb = $('#c-tabla .body'); cb.replaceChildren(); tablaAeropuertos(cb);
+  document.querySelectorAll('#f-mes button').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.m === S.mes)));
+  document.querySelectorAll('#f-rank button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.r === S.rank)));
+  const mejores = S.rank === 'mejores';
+  $('#c-aero h2').textContent = mejores ? 'Aeropuertos de origen más puntuales' : 'Aeropuertos de origen con más demora';
+  $('#c-aero .cs').textContent = (mejores ? 'Menor demora media de llegada, minutos (negativo = llega antes de lo programado)' : 'Demora media de llegada, minutos') + ' · 10 ' + (mejores ? 'mejores' : 'peores');
+  $('#c-aline h2').textContent = mejores ? 'Aerolíneas más puntuales' : 'Aerolíneas por demora';
+  $('#c-aline .cs').textContent = (mejores ? 'Menor demora media de llegada, minutos' : 'Demora media de llegada, minutos') + ' · el nombre sale de dim_carrier';
+  $('#f-min').value = String(S.min);
+}
+$('#f-mes').replaceChildren(...[[0, 'Todos'], [1, 'Enero'], [2, 'Febrero'], [3, 'Marzo']].map(([m, t]) => {
+  const b = h('button', { type: 'button', text: t, 'data-m': m, 'aria-pressed': 'false' });
+  b.addEventListener('click', () => { S.mes = m; render(); });
+  return b;
+}));
+$('#f-rank').replaceChildren(...[['peores', 'Más demora'], ['mejores', 'Más puntuales']].map(([r, t]) => {
+  const b = h('button', { type: 'button', text: t, 'data-r': r, 'aria-pressed': 'false' });
+  b.addEventListener('click', () => { S.rank = r; render(); });
+  return b;
+}));
+$('#f-min').addEventListener('change', e => { S.min = +e.target.value; render(); });
+$('#tema').addEventListener('click', () => {
+  const r = document.documentElement, oscuro = r.getAttribute('data-theme') === 'dark' || (!r.getAttribute('data-theme') && matchMedia('(prefers-color-scheme: dark)').matches);
+  r.setAttribute('data-theme', oscuro ? 'light' : 'dark'); render();
+});
+$('#generado').textContent = DATA.generado;
+let pendiente = 0, ancho = 0;
+new ResizeObserver(es => {  // solo el ancho redibuja (el alto cambia al renderizar: no debe entrar en bucle)
+  const w = Math.round(es[0].contentRect.width);
+  if (w === ancho) return;
+  ancho = w; cancelAnimationFrame(pendiente); pendiente = requestAnimationFrame(render);
+}).observe($('.wrap'));
+render();
+</script>
+</body>
+</html>

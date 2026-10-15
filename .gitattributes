@@ -1,0 +1,10 @@
+# Finales de línea: todo el proyecto usa LF, en el repositorio y también en la carpeta de trabajo.
+# "eol=lf" manda sobre la opción core.autocrlf de cada máquina (en Windows evita los avisos
+# "LF will be replaced by CRLF").
+* text=auto eol=lf
+
+# Los scripts de shell siempre con LF: con CRLF fallan en Linux y macOS ("bash\r: No such file or directory").
+*.sh text eol=lf
+
+# Binarios: que git no los toque.
+*.png binary
